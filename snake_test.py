@@ -52,6 +52,9 @@ class Snake:
         self.current_position = (0,0)
         self.current_direction = (0,0)
         self.hit_box = pygame.Rect(0,0,2,2)
+        self.spawned = False
+        self.coin = pygame.Rect(STARTING_POS[0],STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
+        self.coin_location = (self.coin.x,self.coin.y)
         #We will want this because it will allow us to add a snake part to the end of the snake
         #Each snake part will could have its own direction so we will have an attribute in the
         #SnakePart class that will have its current direction, then based on this we can
@@ -156,7 +159,16 @@ class Snake:
         self.snake_part_list.clear()
         self.head.update(STARTING_POS[0],STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
         self.current_position = 0
-        
+
+    #I think for each snake we will want it to have its own personal coin to get track of
+    def spawn_coin(self):
+        if(not self.spawned):
+            self.coin.update(random.random()*(SCREEN_WIDTH-20),random.random()*(SCREEN_HEIGHT-20),PLAYER_WIDTH,PLAYER_HEIGHT)
+            self.coin_location = (self.coin.x,self.coin.y)
+            self.spawned = True
+    
+    def draw_coin(self,screen):
+        pygame.draw.rect(screen,"yellow",self.coin,PLAYER_WIDTH)
 
 
 
@@ -225,26 +237,26 @@ while running:
     text_surface = my_font.render(f"Score: {len(snake.snake_part_list)}",False,"white")
     screen.blit(text_surface,(0,0))
 
-    #Randomize location for the collectable item
-    if(not collected):
-        item_to_collect.update(random.random()*(SCREEN_WIDTH-20),random.random()*(SCREEN_HEIGHT-20),PLAYER_WIDTH,PLAYER_HEIGHT)
-        collected = True
+    #If a coin is not currently spawned for a snake, then spawn the coin
+    
+    snake.spawn_coin()
+    snake.draw_coin(screen)
 
     #Checks to see if a item has been collected; if it has then add a snake and allow for a new item to be spawned in
-    if(snake.head.colliderect(item_to_collect)):
-        collected = False
+    if(snake.head.colliderect(snake.coin)):
+        snake.spawned = False
         snake.add_snake_part()
 
     #DRAW RECTS
 
     #Have a method for drawing the snake
-    pygame.draw.rect(screen,"yellow",item_to_collect,PLAYER_WIDTH)
          
     #FUNCTION CALLS
     
 
     #This creates constant movement in a direction once a WASD key has been pushed; direction
     # will not change until a different WASD key has been pushed. 
+    
     manage_player_movement(snake)
     snake.draw_snake(screen)
     snake.check_for_collision()
