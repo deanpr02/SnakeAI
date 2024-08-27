@@ -1,0 +1,5 @@
+1. Optimize evaluate function
+2. Train snake so its saved into file
+3. Clean up main and have it be able to run the trained snake or solo play
+4. Add competition feature where u can go up against the AI snake
+5. Move snake and snake_part from ai_model to own file

@@ -1,237 +1,224 @@
-''' THIS WILL BE THE FILE THAT LOADS ALL THE SNAKE GENOMES INTO IT SO IT WILL BE MODIFIED TO HOUSE MULTIPLE SNAKES'''
-
 import pygame
-import random
 import neat
 import os
 import math
+import time
+import pickle
+import snake as ske
 pygame.font.init()
+pygame.init()
 
-
+#Globals
 SCREEN_WIDTH = 720
 SCREEN_HEIGHT = 720
-STARTING_POS = (SCREEN_WIDTH/2,SCREEN_HEIGHT/2)
-RIGHT_BOUNDARY = 720
-LEFT_BOUNDARY = 0
-TOP_BOUNDARY = 0
-BOTTOM_BOUNDARY = 720
 PLAYER_WIDTH = 16
 PLAYER_HEIGHT = 16
+SWITCH_GENERATION = 200
 PLAYER_SPEED = 2
 DIR_DICT = {"LEFT": (-PLAYER_SPEED,0),"RIGHT":(PLAYER_SPEED,0),"UP":(0,-PLAYER_SPEED),"DOWN":(0,PLAYER_SPEED)}
-GEN = 0
-STAT_FONT = pygame.font.SysFont("comicsans", 50)
-
-#TODO:
-#1. Have AI learn to not run into its tail
-#2. Save the best snake
-#3. Be able to load the best snake
-
-class SnakePart:
-    def __init__(self, body,current_direction):
-        #This will be a queue of what each snake body part needs to follow
-        self.direction_queue = []
-        #This will be the positions of which to enact the directions for each snake body part
-        self.position_queue = []
-        #body will be type pygame.rect which will store the rect object of the Snake Part
-        self.body = body
-        self.current_position = (body.x,body.y)
-        self.current_direction = current_direction
-
-    #This should move the snake part in its current direction until it reaches the point
-    #Where it should change directions, then its direction would change and it would
-    #Pop the lists of directions and positions to get to the next one
-    def move_part(self):
-        self.body.move_ip(self.current_direction[0],self.current_direction[1])
-        self.current_position = (self.body.x,self.body.y)
-        if(len(self.direction_queue) > 0):
-            if(self.current_position == self.position_queue[0]):
-                self.current_direction = self.direction_queue.pop(0)
-                self.position_queue.pop(0)
-
-#Snake Class: controls the entire snake and holds the data which references the list of snake parts
-class Snake:
-    def __init__(self, screen):
-        self.head = pygame.Rect(STARTING_POS[0],STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
-        self.current_position = (0,0)
-        self.previous_position = (0,0)
-        self.current_direction = (0,0)
-        self.hit_box = pygame.Rect(0,0,2,2)
-        self.spawned = False
-        self.coin = pygame.Rect(STARTING_POS[0],STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
-        self.coin_location = (self.coin.x,self.coin.y)
-        self.current_distance = -1
-        self.previous_distance = 9999
-        self.best_distance = 9999
-        self.prev_moves = []
-        #We will want this because it will allow us to add a snake part to the end of the snake
-        #Each snake part will could have its own direction so we will have an attribute in the
-        #SnakePart class that will have its current direction, then based on this we can
-        #Add a particular snake part in a certain position.
-        self.snake_part_list = []
-
-    #This will trigger when we go over a coin
-    def add_snake_part(self):
-        new_part = pygame.Rect(self.current_position[0],self.current_position[1],PLAYER_WIDTH,PLAYER_WIDTH)
-        last_snake_item = pygame.Rect(self.head.x,self.head.y,PLAYER_WIDTH,PLAYER_WIDTH)
-        last_snake_item_direction = self.current_direction
-        inherit_directions = []
-        inherit_positions = []
-
-        #If the length of our snake is more than one we will want to have the new snake part inherit the back of the snakes attributes so it follows the correct pattern
-        if(len(self.snake_part_list) > 0):
-            new_part.x = self.snake_part_list[-1].body.x
-            new_part.y = self.snake_part_list[-1].body.y
-            last_snake_item = self.snake_part_list[-1].body
-            inherit_directions = self.snake_part_list[-1].direction_queue[::]
-            inherit_positions = self.snake_part_list[-1].position_queue[::]
-            last_snake_item_direction = self.snake_part_list[-1].current_direction
-        
-        #Checks to see what the direction of the last snake_part is so we can correctly orientate the newly added snake_part
-        if(last_snake_item_direction == (0,-PLAYER_SPEED)):
-            new_part.top = last_snake_item.bottom
-            new_part.y += 2
-        if(last_snake_item_direction == (0,PLAYER_SPEED)):
-            new_part.bottom = last_snake_item.top
-            new_part.y -= 2
-        if(last_snake_item_direction == (-PLAYER_SPEED,0)):
-            new_part.left = last_snake_item.right
-            new_part.x += 2
-        if(last_snake_item_direction == (PLAYER_SPEED,0)):
-            new_part.right = last_snake_item.left
-            new_part.x -= 2
-
-        new_snake_part = SnakePart(new_part,last_snake_item_direction)
-        new_snake_part.direction_queue = inherit_directions
-        new_snake_part.position_queue = inherit_positions
-        self.snake_part_list.append(new_snake_part)
-        
-    def queue_directions(self, direction):
-        for snake_part in self.snake_part_list:
-            #So now every snake part will have a queue of directions and a queue of when they
-            #Should execute those direction changes.
-            snake_part.direction_queue.append(direction)
-            snake_part.position_queue.append(self.current_position)
-
-    def move_snake_parts(self):
-        for snake_part in self.snake_part_list:
-            snake_part.move_part()
+stat_font = pygame.font.SysFont("comicsans", 50)
+screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
+pygame.display.set_caption("Training Snake")
+clock = pygame.time.Clock()
+total_elapsed_time = 0
+gen = 0
+collision_cost = 20
+fruit_gain = 50
+time_alive_gain = 0.0
+minimize_distance_gain = 0.0
 
 
-    def draw_snake(self,screen):
-        outline = pygame.Rect(self.head.x-1,self.head.y-1,PLAYER_WIDTH+2,PLAYER_HEIGHT+2)
-        pygame.draw.rect(screen,"white",outline,PLAYER_WIDTH+2)
-        pygame.draw.rect(screen,"red",self.head,PLAYER_WIDTH)
-        for snake_part in self.snake_part_list:
-            outline = pygame.Rect(snake_part.body.x-1,snake_part.body.y-1,PLAYER_WIDTH+2,PLAYER_HEIGHT+2)
-            pygame.draw.rect(screen,"white",outline,PLAYER_WIDTH+2)
-            pygame.draw.rect(screen,"red",snake_part.body,PLAYER_WIDTH)
-    
-    def move_left(self):
-        self.current_direction = DIR_DICT["LEFT"]
-        self.queue_directions(DIR_DICT["LEFT"])
-        self.previous_position = self.current_position
-        self.head.move_ip(-PLAYER_SPEED,0)
-        self.current_position = (self.head.x,self.head.y)
-        self.hit_box.update(self.head.x+(PLAYER_WIDTH/2-1),self.head.y+(PLAYER_HEIGHT/2-1),2,2)
-        self.prev_moves.append(self.previous_position)
-        self.move_snake_parts()
+#Training-Specific Functions
+def update_screen(snakes,screen):
+    for snake in snakes:
+        snake.draw_snake(screen)
+        score_label = stat_font.render("Gen: " + str(gen-1),1,(255,255,255))
+        screen.blit(score_label, (10, 50))
 
-    def move_right(self):
-        self.current_direction = DIR_DICT["RIGHT"]
-        self.queue_directions(DIR_DICT["RIGHT"])
-        self.previous_position = self.current_position
-        self.head.move_ip(PLAYER_SPEED,0)
-        self.current_position = (self.head.x,self.head.y)
-        self.hit_box.update(self.head.x+(PLAYER_WIDTH/2-1),self.head.y+(PLAYER_HEIGHT/2-1),2,2)
-        self.prev_moves.append(self.previous_position)
-        self.move_snake_parts()
-    
-    def move_up(self):
-        self.current_direction = DIR_DICT["UP"]
-        self.queue_directions(DIR_DICT["UP"])
-        self.previous_position = self.current_position
-        self.head.move_ip(0,-PLAYER_SPEED)
-        self.current_position = (self.head.x,self.head.y)
-        self.hit_box.update(self.head.x+(PLAYER_WIDTH/2-1),self.head.y+(PLAYER_HEIGHT/2-1),2,2)
-        self.prev_moves.append(self.previous_position)
-        self.move_snake_parts()
+def check_if_coin_collected(snake,index,ge):
+    #fruit_gain = 3 * len(snake.snake_part_list)
+    ge[index].fitness += time_alive_gain
+    snake.spawn_coin()
+    snake.draw_coin(screen)
+    #Checks to see if each snakes individual coin has been collected
+    if(snake.head.colliderect(snake.coin)):
+        snake.spawned = False
+        snake.add_snake_part()
+        ge[index].fitness += fruit_gain
+        snake.start_time = pygame.time.get_ticks()
+        snake.prev_moves.clear()
+        snake.end_time = 0
+        snake.best_distance = 9999
+        snake.timer = 0
+        snake.timer_started = False
+        #snake.time_last_collected = pygame.time.get_ticks()
 
-    def move_down(self):
-        self.current_direction = DIR_DICT["DOWN"]
-        self.queue_directions(DIR_DICT["DOWN"])
-        self.previous_position = self.current_position
-        self.head.move_ip(0,PLAYER_SPEED)
-        self.current_position = (self.head.x,self.head.y)
-        self.hit_box.update(self.head.x+(PLAYER_WIDTH/2-1),self.head.y+(PLAYER_HEIGHT/2-1),2,2)
-        self.prev_moves.append(self.previous_position)
-        self.move_snake_parts()
-
-    def check_for_collision(self):
-        snake_part_rects = [rect.body for rect in self.snake_part_list]
-        if(self.hit_box.collideobjects(snake_part_rects)):
-            self.head.update(STARTING_POS[0],STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
-            self.reset_snake()
+def if_dead(snake,dir):
+    snake_temp = pygame.Rect(0,0,2,2)
+    new_x = snake.head.x + DIR_DICT[dir][0]
+    new_y = snake.head.y + DIR_DICT[dir][1]
+    snake_temp.update(new_x+(PLAYER_WIDTH/2-1),new_y+(PLAYER_HEIGHT/2-1),2,2)
+    snake_part_rects = [rect.body for rect in snake.snake_part_list]
+    if(snake_temp.collideobjects(snake_part_rects)):
             return True
-        return False
-    
-    def reset_snake(self):
-        self.snake_part_list.clear()
-        self.head.update(STARTING_POS[0],STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
-        self.current_position = (0,0)
-
-    #I think for each snake we will want it to have its own personal coin to get track of
-    def spawn_coin(self):
-        if(not self.spawned):
-            self.coin.update(random.random()*(SCREEN_WIDTH-20),random.random()*(SCREEN_HEIGHT-20),PLAYER_WIDTH,PLAYER_HEIGHT)
-            self.coin_location = (self.coin.x,self.coin.y)
-            self.spawned = True
-    
-    def draw_coin(self,screen):
-        pygame.draw.rect(screen,"yellow",self.coin,PLAYER_WIDTH)
-
-    def calc_distance(self):
-        x_dist = self.head.x - self.coin.x
-        x_dist = x_dist**2
-        y_dist = self.head.y - self.coin.y
-        y_dist = y_dist**2
-        distance = math.sqrt(x_dist+y_dist)
-        return distance
-    
-
-
-
-
-
-
-#Game-Specific Functions
-def manage_player_movement(snake):
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_w]:
-        snake.move_up()
-    elif keys[pygame.K_s]:
-        snake.move_down()
-    elif keys[pygame.K_a]:
-        snake.move_left()
-    elif keys[pygame.K_d]:
-        snake.move_right()
-
-def check_if_inbounds(snake):
-    if(snake.head.right >= RIGHT_BOUNDARY):
-        return True
-    if(snake.head.top <= TOP_BOUNDARY):
-        return True
-    if(snake.head.left <= LEFT_BOUNDARY):
-        return True
-    if(snake.head.bottom >= BOTTOM_BOUNDARY):
-        return True
-    snake.current_position = (snake.head.x,snake.head.y)
     return False
 
-def calc_time(snakes):
-    for snake in snakes:
-        time_without_coin = pygame.time.get_ticks() - snake.start_time
-        snake.end_time = time_without_coin
+#-6
+def initialize_phase1_net_inputs(snake,index,nets):
+    #add current direction plus snake length for now, might add if left/right/up/down is blocked
+    x_inputs,y_inputs = snake.calc_inputs()
+    x_inputs,y_inputs = snake.calc_input_distances(x_inputs,y_inputs)
+    boundary_inputs = snake.calc_bound_distances()
+    #distance of snake head to nearest snake part in left, right, down, and up direction
+    #distances = snake.calc_distance_to_nearest_part() 
+    obstacles = snake.check_if_obstacles()          
+    inputs = x_inputs + y_inputs + boundary_inputs + obstacles
+    #inputs.append(len(snake.snake_part_list))
+    inputs.append(snake.current_direction[0])
+    inputs.append(snake.current_direction[1])
+
+    output = nets[index].activate(inputs)
+
+    return output
+
+#-5
+def initialize_phase2_net_inputs(snake,index,nets):
+    #add current direction plus snake length for now, might add if left/right/up/down is blocked
+    x_inputs,y_inputs = snake.calc_inputs()
+    x_inputs,y_inputs = snake.calc_input_distances(x_inputs,y_inputs)
+    boundary_inputs = snake.calc_bound_distances()
+    #distance of snake head to nearest snake part in left, right, down, and up direction
+    distances = snake.calc_distance_to_nearest_part() 
+    obstacles = snake.check_if_obstacles()          
+    inputs = x_inputs + y_inputs + boundary_inputs + distances + obstacles
+    inputs.append(len(snake.snake_part_list))
+    inputs.append(snake.current_direction[0])
+    inputs.append(snake.current_direction[1])
+
+    output = nets[index].activate(inputs)
+
+    return output
+
+def predict_move(snake,output,index,ge):
+    maximum = max(output)
+    if maximum == output[0]:
+        snake.move_left()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+    elif maximum == output[1]:
+        snake.move_right()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+    elif maximum == output[2]:
+        snake.move_up()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+    elif maximum == output[3]:
+        snake.move_down()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+
+def predict_move2(snake,output,index,ge):
+    directions = {0:"LEFT",1:"RIGHT",2:"UP",3:"DOWN"}
+    while True:
+        maximum_index = output.index(max(output))
+        if if_dead(snake,directions[maximum_index]):
+            output[maximum_index] = -float('inf')
+            continue
+        maximum = output[maximum_index]
+        break
+    if maximum == output[0]:
+        snake.move_left()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+    elif maximum == output[1]:
+        snake.move_right()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+    elif maximum == output[2]:
+        snake.move_up()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+    elif maximum == output[3]:
+        snake.move_down()
+        new_dist = snake.calc_distance()
+        snake.previous_distance = snake.current_distance
+        snake.current_distance = new_dist
+        if snake.current_distance < snake.best_distance:
+            ge[index].fitness += minimize_distance_gain
+            snake.best_distance = snake.current_distance
+            
+def is_snake_collision(snakes,snake,index,ge,nets):
+    if snake.check_for_collision():
+        ge[index].fitness -= collision_cost
+        nets.pop(index)
+        ge.pop(index)
+        snakes.pop(snakes.index(snake))
+
+def is_snake_inbounds(snakes,snake,index,ge,nets):
+    if snake.check_if_inbounds():
+        ge[index].fitness -= collision_cost
+        nets.pop(index)
+        ge.pop(index)
+        snakes.pop(index)
+        snake.reset_snake()
+
+def purge_stagnation(snakes,snake,index,ge,nets):
+    if len(snake.snake_part_list) < 10 and snake.current_position in snake.prev_moves:
+        ge[index].fitness -= 0.2
+            
+    if ge[index].fitness < -5:
+        nets.pop(index)
+        ge.pop(index)
+        snakes.pop(index)
+        snake.reset_snake()
+        return
+    """
+    snake.timer = (pygame.time.get_ticks() - snake.time_last_collected) // 1000
+    if(snake.timer == 5):
+        ge[index].fitness -= 100
+        nets.pop(index)
+        ge.pop(index)
+        snakes.pop(index)
+        """
+
+def calc_time(snake,index,ge):
+    if not snake.timer_started:
+        snake.start_time = time.time()
+        snake.timer_started = True
+    end_time = time.time()
+    snake.timer = (end_time - snake.start_time)
+    if(snake.timer >= 7):
+        ge[index].fitness -= 1000
+    
 
 def calc_distance(obj1, obj2):
     x_dist = obj2[0] - obj1[0]
@@ -241,65 +228,19 @@ def calc_distance(obj1, obj2):
     dist = math.sqrt(x_dist,y_dist)
     return dist
 
-def calc_inputs(snake):
-    #inputs = [X_LEFT, X_RIGHT, X_UP, X_DOWN, Y_LEFT, Y_RIGHT, Y_UP, Y_DOWN]
-    x_left = snake.head.x + DIR_DICT["LEFT"][0]
-    x_right = snake.head.x + DIR_DICT["RIGHT"][0]
-    x_up = snake.head.x + DIR_DICT["UP"][0]
-    x_down = snake.head.x + DIR_DICT["DOWN"][0]
-    x_inputs = [x_left,x_right,x_up,x_down]
-    y_left = snake.head.y + DIR_DICT["LEFT"][1]
-    y_right = snake.head.y + DIR_DICT["RIGHT"][1]
-    y_up = snake.head.y + DIR_DICT["UP"][1]
-    y_down = snake.head.y + DIR_DICT["DOWN"][1]
-    y_inputs = [y_left,y_right,y_up,y_down]
-    return x_inputs,y_inputs
-            
-def calc_input_distances(x_inputs,y_inputs,snake):
-    for i, x_input in enumerate(x_inputs):
-        disp = snake.coin.x - x_input
-        x_inputs[i] = disp
-
-    for i, y_input in enumerate(y_inputs):
-        disp = snake.coin.y - y_input
-        y_inputs[i] = disp
-    
-    return x_inputs,y_inputs
-
-def calc_bound_distances(snake):
-    left_bound_d = abs(LEFT_BOUNDARY - snake.head.x)
-    right_bound_d = abs(RIGHT_BOUNDARY - snake.head.x)
-    top_bound_d = abs(TOP_BOUNDARY - snake.head.y)
-    bot_bound_d = abs(BOTTOM_BOUNDARY - snake.head.y)
-    bound_distances = [left_bound_d,right_bound_d,top_bound_d,bot_bound_d]
-    return bound_distances
-
-
-pygame.init()
-pygame.font.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
-pygame.display.set_caption("Snake")
-clock = pygame.time.Clock()
-gen = 0
-
-
-def evaluate(genomes, config):
-    global gen
+def eval_movement(genomes,config):
+    global gen,collision_cost,fruit_gain,time_alive_gain,minimize_distance_gain
     gen += 1
     nets = []
     snakes = []
     ge = []
     running = True
-    stat_font = pygame.font.SysFont("comicsans", 50)
     for genome_id, genome in genomes:
         genome.fitness = 0
         net = neat.nn.FeedForwardNetwork.create(genome,config)
         nets.append(net)
-        snakes.append(Snake(screen))
+        snakes.append(ske.Snake(screen))
         ge.append(genome)
-
-
-#TODO: ONLY GIVE FITNESS FOR REDUCING DISTANCE TO THE COIN, NOT MOVING
 
     while running and len(snakes) > 0:
         for event in pygame.event.get():
@@ -307,123 +248,142 @@ def evaluate(genomes, config):
                 running = False
                 pygame.quit()
                 break
-        #placeholder for the list that will hold all the snakes 
         #fill screen with a color
         screen.fill("black")
-
-        #If a coin is not currently spawned for a snake, then spawn the coin
-        for snake in snakes:
-            #fitness for being alive longer
-            ge[snakes.index(snake)].fitness += 0.1
-            snake.spawn_coin()
-            snake.draw_coin(screen)
-            #Checks to see if each snakes individual coin has been collected
-            if(snake.head.colliderect(snake.coin)):
-                snake.spawned = False
-                snake.add_snake_part()
-                ge[snakes.index(snake)].fitness += 1
-                snake.start_time = pygame.time.get_ticks()
-                snake.prev_moves.clear()
-                snake.end_time = 0
-                snake.best_distance = 9999
-
-            #If snake is moving closer to the coin then we want to increase its fitness
-
         for x,snake in enumerate(snakes):
+            calc_time(snake,snakes.index(snake),ge)
+            check_if_coin_collected(snake,snakes.index(snake),ge)
+            output = initialize_phase1_net_inputs(snake,snakes.index(snake),nets)
+            predict_move(snake,output,snakes.index(snake),ge)
+            if snake not in snakes:
+                continue    
+            is_snake_collision(snakes,snake,x,ge,nets)
+            if snake not in snakes:
+                continue
+            is_snake_inbounds(snakes,snake,x,ge,nets)
+            if snake not in snakes:
+                continue
+            purge_stagnation(snakes,snake,x,ge,nets)
 
-            x_inputs,y_inputs = calc_inputs(snake)
-            x_inputs,y_inputs = calc_input_distances(x_inputs,y_inputs,snake)
-            boundary_inputs = calc_bound_distances(snake)
-
-            inputs = x_inputs + y_inputs + boundary_inputs
-
-            output = nets[snakes.index(snake)].activate(inputs)
-
-            maximum = max(output)
-            if maximum == output[0]:
-                snake.move_left()
-                new_dist = snake.calc_distance()
-                snake.previous_distance = snake.current_distance
-                snake.current_distance = new_dist
-                if snake.current_distance < snake.best_distance:
-                    ge[snakes.index(snake)].fitness += 0.2
-                    snake.best_distance = snake.current_distance
-            elif maximum == output[1]:
-                snake.move_right()
-                new_dist = snake.calc_distance()
-                snake.previous_distance = snake.current_distance
-                snake.current_distance = new_dist
-                if snake.current_distance < snake.best_distance:
-                    ge[snakes.index(snake)].fitness += 0.2
-                    snake.best_distance = snake.current_distance
-            elif maximum == output[2]:
-                snake.move_up()
-                new_dist = snake.calc_distance()
-                snake.previous_distance = snake.current_distance
-                snake.current_distance = new_dist
-                if snake.current_distance < snake.best_distance:
-                    ge[snakes.index(snake)].fitness += 0.2
-                    snake.best_distance = snake.current_distance
-            elif maximum == output[3]:
-                snake.move_down()
-                new_dist = snake.calc_distance()
-                snake.previous_distance = snake.current_distance
-                snake.current_distance = new_dist
-                if snake.current_distance < snake.best_distance:
-                    ge[snakes.index(snake)].fitness += 0.2
-                    snake.best_distance = snake.current_distance
-
-        #This will manage the movement and drawing of each snake in the list
-        #for snake in snakes:
-            #if snake.check_for_collision():
-                #ge[snakes.index(snake)].fitness -= 1
-                #nets.pop(snakes.index(snake))
-                #ge.pop(snakes.index(snake))
-                #snakes.pop(snakes.index(snake))
-                
-            
-        for snake in snakes:
-            if check_if_inbounds(snake):
-                ge[snakes.index(snake)].fitness -= 1
-                nets.pop(snakes.index(snake))
-                ge.pop(snakes.index(snake))
-                snakes.pop(snakes.index(snake))
-
-        for snake in snakes:
-            if snake.current_position in snake.prev_moves:
-                ge[snakes.index(snake)].fitness -= 0.2
-            
-            if ge[snakes.index(snake)].fitness < -5:
-                nets.pop(snakes.index(snake))
-                ge.pop(snakes.index(snake))
-                snakes.pop(snakes.index(snake))
-
-            #Need to change this function when AI is implemented
-            snake.draw_snake(screen)
-            score_label = stat_font.render("Gen: " + str(gen-1),1,(255,255,255))
-            screen.blit(score_label, (10, 50))
-
-
+        update_screen(snakes,screen)
 
         #show display to the screen
         pygame.display.flip()
+
+        if pygame.key.get_pressed()[pygame.K_LSHIFT]:
+            for snake in snakes:
+                snake.start_time = time.time()
+            pygame.time.Clock().tick(60)
+            
         #We are running every second 60 frames
-        #pygame.time.Clock().tick(60)
+        #pygame.time.Clock().tick(400)
+    for snake in snakes:
+        snake.reset_snake()
+
+def eval_avoidance(genomes,config):
+    global gen,collision_cost,fruit_gain,time_alive_gain,minimize_distance_gain
+    gen += 1
+    collision_cost = 50
+    fruit_gain = 20
+    time_alive_gain = 0.1
+    nets = []
+    snakes = []
+    ge = []
+    running = True
+    for genome_id, genome in genomes:
+        genome.fitness = 0
+        net = neat.nn.FeedForwardNetwork.create(genome,config)
+        nets.append(net)
+        snakes.append(ske.Snake(screen))
+        ge.append(genome)
+
+    while running and len(snakes) > 0:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                pygame.quit()
+                break
+        #fill screen with a color
+        screen.fill("black")
+        for x,snake in enumerate(snakes):
+            calc_time(snake,snakes.index(snake),ge)
+            check_if_coin_collected(snake,snakes.index(snake),ge)
+            output = initialize_phase2_net_inputs(snake,snakes.index(snake),nets)
+            predict_move(snake,output,snakes.index(snake),ge)
+            if snake not in snakes:
+                continue    
+            is_snake_collision(snakes,snake,x,ge,nets)
+            if snake not in snakes:
+                continue
+            is_snake_inbounds(snakes,snake,x,ge,nets)
+            if snake not in snakes:
+                continue
+            purge_stagnation(snakes,snake,x,ge,nets)
+
+        update_screen(snakes,screen)
+
+        #show display to the screen
+        pygame.display.flip()
+
+        if pygame.key.get_pressed()[pygame.K_LSHIFT]:
+            for snake in snakes:
+                snake.start_time = time.time()
+            pygame.time.Clock().tick(60)
+            
+        #We are running every second 60 frames
+        #pygame.time.Clock().tick(400)
+    for snake in snakes:
+        snake.reset_snake()
 
 def run(config_file):
-    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_file)
+    #config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_file)
     
-    pop = neat.Population(config)
+    #pop = neat.Population(config)
+    #pop.add_reporter(neat.StdOutReporter(True))
+    #stats = neat.StatisticsReporter()
+    #pop.add_reporter(stats)
+
+    
+    #training of the snake for movement
+    #winner = pop.run(eval_movement, 400)
+    #phase1_best_network = neat.nn.FeedForwardNetwork.create(winner, config)
+    #saving the snake for use in the next training phase
+    #with open('phase_1_snake.pkl', 'wb') as file:
+        #pickle.dump((pop.population,pop.species),file)
+    
+    #print("\nBest snake from Phase 1: \n{!s}".format(winner))
+
+    with open('phase_1_snake.pkl','rb') as file:
+        best_genomes,species = pickle.load(file)
+        generations = 0
+
+
+
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir,'config_p2_feedforward.txt')
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation,config_path)
+    
+    pop = neat.Population(config,initial_state=(best_genomes,species,generations))
+    #config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
+    
+    #pop = neat.Population(config)
     pop.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
 
-    winner = pop.run(evaluate, 10000)
+    winner = pop.run(eval_avoidance,1500)
+    phase2_best_network = neat.nn.FeedForwardNetwork.create(winner,config)
+    with open('phase_2_snake.pkl','wb') as file:
+        pickle.dump(phase2_best_network,file)
+    
+    print("\nBest snake from Phase 2: \n{!s}".format(winner))
+    
 
-    print("\nBest snake: \n{!s}".format(winner))
 
 if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir,'config_feedforward.txt')
+    config_path = os.path.join(local_dir,'config_p1_feedforward.txt')
     run(config_path)
 
+
+#for round 1 we have the distances to the coins, round 2 we have distances to the body
