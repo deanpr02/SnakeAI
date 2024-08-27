@@ -336,47 +336,22 @@ def eval_avoidance(genomes,config):
         snake.reset_snake()
 
 def run(config_file):
-    #config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_file)
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_file)
     
-    #pop = neat.Population(config)
-    #pop.add_reporter(neat.StdOutReporter(True))
-    #stats = neat.StatisticsReporter()
-    #pop.add_reporter(stats)
-
-    
-    #training of the snake for movement
-    #winner = pop.run(eval_movement, 400)
-    #phase1_best_network = neat.nn.FeedForwardNetwork.create(winner, config)
-    #saving the snake for use in the next training phase
-    #with open('phase_1_snake.pkl', 'wb') as file:
-        #pickle.dump((pop.population,pop.species),file)
-    
-    #print("\nBest snake from Phase 1: \n{!s}".format(winner))
-
-    with open('phase_1_snake.pkl','rb') as file:
-        best_genomes,species = pickle.load(file)
-        generations = 0
-
-
-
-    local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir,'config_p2_feedforward.txt')
-    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation,config_path)
-    
-    pop = neat.Population(config,initial_state=(best_genomes,species,generations))
-    #config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
-    
-    #pop = neat.Population(config)
+    pop = neat.Population(config)
     pop.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
 
-    winner = pop.run(eval_avoidance,1500)
-    phase2_best_network = neat.nn.FeedForwardNetwork.create(winner,config)
-    with open('phase_2_snake.pkl','wb') as file:
-        pickle.dump(phase2_best_network,file)
     
-    print("\nBest snake from Phase 2: \n{!s}".format(winner))
+    #training of the snake for movement
+    winner = pop.run(eval_movement, 150)
+    phase1_best_network = neat.nn.FeedForwardNetwork.create(winner, config)
+    #saving the snake for use in the next training phase
+    with open('phase_1_snake.pkl', 'wb') as file:
+        pickle.dump(phase1_best_network,file)
+    
+
     
 
 
