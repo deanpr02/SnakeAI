@@ -5,6 +5,7 @@ from ai_model import run
 import snake as ske
 import pickle
 from globals import screen
+
 SCREEN_WIDTH = 720
 SCREEN_HEIGHT = 720
 RIGHT_BOUNDARY = 720
@@ -17,7 +18,14 @@ USER = 0
 AI = 1
 
 
-#Game-Specific Functions
+"""
+Move the player in a direction corresponding to WASD keys
+
+Args:
+    player -> Snake object
+    head -> pygame.Rect
+    outline -> pygame.Rect
+"""
 def manage_player_movement(player, head, outline):
     if player.current_direction == ske.DIR_DICT["UP"]:
         head.move_ip(0,-2)
@@ -30,25 +38,25 @@ def manage_player_movement(player, head, outline):
     outline.update(head.x-1,head.y-1,PLAYER_WIDTH+2,PLAYER_HEIGHT+2)
     player.hit_box.update(head.x+(PLAYER_WIDTH/2-1),head.y+(PLAYER_HEIGHT/2-1),2,2)
 
-#After the occurence of a "game-over" event, this function will reset the game aka reset the snake length and position of the head to the middle of the screen.
+"""
+After the occurence of a "game-over" event, this function will reset the game aka reset the snake length and position of the head to the middle of the screen.
+
+Args:
+    player -> Snake object
+"""
 def reset_game(player):
     player.current_direction = (0,0)
     player.snake_part_list = []
 
 """
-def manage_player_movement(snake):
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_w]:
-        snake.move_up()
-    elif keys[pygame.K_s]:
-        snake.move_down()
-    elif keys[pygame.K_a]:
-        snake.move_left()
-    elif keys[pygame.K_d]:
-        snake.move_right()
-"""
+Check to see if a player has touched the side of the screen
 
-#Check to see if a player has touched the side of the screen
+Args:
+    player -> Snake object
+
+Return:
+    True if no out of bounds, False if out of bounds -> boolean
+"""
 def check_if_inbounds(player):
     if(player.head.right == RIGHT_BOUNDARY):
         player.head.update(ske.STARTING_POS[0],ske.STARTING_POS[1],PLAYER_WIDTH,PLAYER_HEIGHT)
@@ -69,6 +77,15 @@ def check_if_inbounds(player):
     player.current_position = (player.head.x,player.head.y)
     return True
 
+"""
+Checks to see if the snake head has connected with any of the snake body
+
+Args:
+    player -> Snake object
+
+Return:
+    True if there is no collision False if there is a collision -> boolean
+"""
 def check_for_collision(player):
     snake_part_rects = [rect.body for rect in player.snake_part_list]
     if(player.hit_box.collideobjects(snake_part_rects)):
@@ -77,7 +94,13 @@ def check_for_collision(player):
         return False
     return True
 
+"""
+Queue the directions the head moves so the snake parts can have a record of what moves they need to make
+when they are created
 
+Args:
+    player -> Snake object
+"""
 def get_directions(player):
     keys = pygame.key.get_pressed()
     if keys[pygame.K_w]:
@@ -93,12 +116,25 @@ def get_directions(player):
         player.current_direction = ske.DIR_DICT["RIGHT"]
         player.queue_directions(ske.DIR_DICT["RIGHT"])
 
+#TODO: Finish this function
+"""
+If no snake has been trained, run the NEAT algorithm to train one
+"""
 def train_snake():
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir,'config_feedforward.txt')
     run(config_path)
 
+
+"""
+Depending on output from the neural network, choose the move which the network deems maximum gain
+
+Args:
+    output -> list of outputs from network
+    player -> Snake object
+"""
 def select_move(output,player):
+    #output is in the format of [LEFT,RIGHT,UP,DOWN]
     maximum = max(output)
     if maximum == output[0]:
         player.move_left()
@@ -121,18 +157,25 @@ def select_move(output,player):
         player.previous_distance = player.current_distance
         player.current_distance = new_dist
 
+"""
+Gathers inputs and passes it to the neural network to retrieve outputs to determine next move for snake
 
+Args:
+    player -> Snake object
+    net -> NEAT Feed Forward network
 
+Return:
+    list of outputs for each potential directional move -> list
+"""
 def get_net_inputs(player,net):
     #add current direction plus snake length for now, might add if left/right/up/down is blocked
     x_inputs,y_inputs = player.calc_inputs()
     x_inputs,y_inputs = player.calc_input_distances(x_inputs,y_inputs)
     boundary_inputs = player.calc_bound_distances()
     #distance of snake head to nearest snake part in left, right, down, and up direction
-    #distances = snake.calc_distance_to_nearest_part() 
     obstacles = player.check_if_obstacles()          
     inputs = x_inputs + y_inputs + boundary_inputs + obstacles
-    #inputs.append(len(snake.snake_part_list))
+
     inputs.append(player.current_direction[0])
     inputs.append(player.current_direction[1])
 
@@ -140,7 +183,12 @@ def get_net_inputs(player,net):
 
     return output
 
+"""
+Checks to see if a coin has been collected, if there has then spawn a new one
 
+Args:
+    player -> Snake object
+"""
 def check_if_coin_collected(player):
     player.spawn_coin()
     player.draw_coin(screen)
@@ -153,7 +201,13 @@ def check_if_coin_collected(player):
         player.end_time = 0
         player.best_distance = 9999
 
+"""
+Development function which has lines on the snake in all four directions which disappear opposite of which
+direction the snake is moving
 
+Args:
+    player -> Snake object
+"""
 def update_dev_lines(player):
     x_pos,y_pos = player.head.x,player.head.y
     obstacles = player.check_if_obstacles()
@@ -178,41 +232,44 @@ def update_dev_lines(player):
     else:
         pygame.draw.line(screen,"WHITE",(x_pos,y_pos+PLAYER_HEIGHT),(x_pos,SCREEN_HEIGHT))
 
-def check_if_coin_collected(snake):
-    #fruit_gain = 3 * len(snake.snake_part_list)
-    snake.spawn_coin()
-    snake.draw_coin(screen)
-    #Checks to see if each snakes individual coin has been collected
-    if(snake.head.colliderect(snake.coin)):
-        snake.spawned = False
-        snake.add_snake_part()
-        snake.start_time = pygame.time.get_ticks()
-        snake.prev_moves.clear()
-        snake.end_time = 0
-        snake.best_distance = 9999
-        snake.timer = 0
-        snake.timer_started = False
+#def check_if_coin_collected(snake):
+#    #fruit_gain = 3 * len(snake.snake_part_list)
+#    snake.spawn_coin()
+#    snake.draw_coin(screen)
+#    #Checks to see if each snakes individual coin has been collected
+#    if(snake.head.colliderect(snake.coin)):
+#        snake.spawned = False
+#        snake.add_snake_part()
+#        snake.start_time = pygame.time.get_ticks()
+#        snake.prev_moves.clear()
+#        snake.end_time = 0
+#        snake.best_distance = 9999
+#        snake.timer = 0
+#        snake.timer_started = False
 
-
+"""
+Trains a snake using NEAT algorithm if one is not saved, otherwise run the game using the net
+"""
 def run_ai_snake():
-    #pygame.font.init()
     pygame.display.set_caption("Snake Game")
     clock = pygame.time.Clock()
     my_font = pygame.font.SysFont('Comic Sans MS',20)
 
     running = True
-    movement_dir = ""
-    collected = False
 
-    if os.path.isfile('phase_1_snake.pkl'):
-        with open('phase_1_snake.pkl', 'rb') as f:
+    if os.path.isfile('best_snake.pkl'):
+        with open('best_snake.pkl', 'rb') as f:
             net = pickle.load(f)
         print("Loaded best snake")
+    else:
+        train_snake()
+        with open('best_snake.pkl', 'rb') as f:
+            net = pickle.load(f)
     
     player = ske.Snake(screen)
-    starting_pos = pygame.Vector2(screen.get_width() / 2, screen.get_height() / 2)
-    item_to_collect = pygame.Rect(starting_pos.x, starting_pos.y,PLAYER_WIDTH,PLAYER_HEIGHT)
-    outline = pygame.Rect(starting_pos.x-2,starting_pos.y-2,PLAYER_WIDTH+2,PLAYER_HEIGHT+2)
+    #starting_pos = pygame.Vector2(screen.get_width() / 2, screen.get_height() / 2)
+    #item_to_collect = pygame.Rect(starting_pos.x, starting_pos.y,PLAYER_WIDTH,PLAYER_HEIGHT)
+    #outline = pygame.Rect(starting_pos.x-2,starting_pos.y-2,PLAYER_WIDTH+2,PLAYER_HEIGHT+2)
 
     while running:
         for event in pygame.event.get():
@@ -225,7 +282,6 @@ def run_ai_snake():
         screen.blit(text_surface,(0,0))
 
         check_if_coin_collected(player)
-        #manage_player_movement(player,player.head, outline)
         output = get_net_inputs(player,net)
 
         select_move(output,player)
@@ -233,47 +289,33 @@ def run_ai_snake():
         #This draws all parts of the snake
         player.draw_snake(screen)
 
-        #Checks to see if the player hits the boundary
+        #Check for losing conditions
         check_if_inbounds(player)
-
-        #Checks to see if the player hits a part of the snake
         check_for_collision(player)
 
         #show display to the screen
         pygame.display.flip()
         dt = clock.tick(60) / 1000
 
+"""
+Runs a user-controlled game of snake
+"""
 def run_snake():
-    #pygame.init()
-    #pygame.font.init()
-    #screen2 = pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
     pygame.display.set_caption("AI Snake Game")
     clock = pygame.time.Clock()
     my_font = pygame.font.SysFont('Comic Sans MS',20)
 
     running = True
-    movement_dir = ""
     collected = False
 
-    if os.path.isfile('phase_1_snake.pkl'):
-        with open('phase_1_snake.pkl', 'rb') as f:
-            net = pickle.load(f)
-        print("Loaded best snake")
-
     player = ske.Snake(screen)
-    #snake_head = player.head
     starting_pos = pygame.Vector2(screen.get_width() / 2, screen.get_height() / 2)
-    #This is the class that references the entire Snake class which will be composed
-    #of a bunch of snake parts
-    #player = ske.Snake(screen)
-    #This represents the head of the snake which will be responding to player input controls
-    #snake_head = pygame.Rect(starting_pos.x,starting_pos.y,PLAYER_WIDTH,PLAYER_HEIGHT)
+    
     #Represents the item which will grow the snake
     item_to_collect = pygame.Rect(starting_pos.x, starting_pos.y,PLAYER_WIDTH,PLAYER_HEIGHT)
     #Outline around snake_head to make it more defined looking
     outline = pygame.Rect(starting_pos.x-2,starting_pos.y-2,PLAYER_WIDTH+2,PLAYER_HEIGHT+2)
 
-    #snakes = [player]
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -294,40 +336,35 @@ def run_snake():
             collected = False
             player.add_snake_part()
 
-        #DRAW RECTS
+        #-----DRAW RECTS-----
 
         #Have a method for drawing the snake
         pygame.draw.rect(screen,"yellow",item_to_collect,PLAYER_WIDTH)
         pygame.draw.rect(screen,"white",outline,PLAYER_WIDTH+2)
         pygame.draw.rect(screen,"red",player.head,PLAYER_WIDTH)
 
-        #FUNCTION CALLS
+        #-----FUNCTION CALLS-----
 
-        #Get the keys pressed so we can queue the direction of the snake head
-        get_directions(player)
-
-        #This creates constant movement in a direction once a WASD key has been pushed; direction
-        # will not change until a different WASD key has been pushed. 
-        manage_player_movement(player,player.head, outline)
-
-        #This will move every snake part on the snake
+        #Movement processing for snake head/body
+        get_directions(player) 
+        manage_player_movement(player,player.head,outline)
         player.move_snake_parts()
-
-        #This draws all parts of the snake
         player.draw_snake(screen)
 
-        #update_dev_lines(player)
-
-        #Checks to see if the player hits the boundary
+        #Checks for losing conditions in the game
         check_if_inbounds(player)
-
-        #Checks to see if the player hits a part of the snake
         check_for_collision(player)
 
         #show display to the screen
         pygame.display.flip()
         dt = clock.tick(60) / 1000
 
+"""
+Generates the main menu and allows selection for either a user game or AI training
+
+Return:
+    Game selection -> int
+"""
 def run_main_menu():
     regular_game_rect = pygame.Rect(120,450,150,85)
     ai_game_rect = pygame.Rect(450,450,150,85)
@@ -364,7 +401,9 @@ def run_main_menu():
     screen.fill("BLACK")
     return game_selection
 
-
+"""
+Entry point for program
+"""
 def main():
     game_selection = run_main_menu()
 
